@@ -1,4 +1,3 @@
-from openai import OpenAI
 import os
 import streamlit as st
 from PyPDF2 import PdfReader
@@ -6,15 +5,10 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
-
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from datetime import datetime
-
 import json 
-import pandas as pd 
-from langchain import PromptTemplate
-from PIL import Image
 
 os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
 
