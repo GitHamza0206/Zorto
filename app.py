@@ -9,8 +9,12 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from datetime import datetime
 import json 
+import sys 
 
 os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
+
+__import__('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 def get_pdf_text(pdf_docs):
     text = ""
