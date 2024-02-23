@@ -58,31 +58,36 @@ def main():
 
     contract = st.file_uploader("Upload your contract here", accept_multiple_files = False)
     if contract:
-        if st.button('Process'):
-            with st.spinner('Processing...'): 
-                try: 
-                    raw_text = get_pdf_text(contract)
-                    text_chunks = get_text_chunks(raw_text)
-                    vector_store = get_vector_store(text_chunks)
-                    conv = conversation_chain(vector_store)
-                    st.session_state.conversation = conv
-                    answer = conv({"question": 'Extract the date of expiration of the contract in this format Day/Month/Year. You answer should be the date only in JSON format like this {"expiration_date":"extracted_date}"'})
-                    str_answer = str(answer['answer'])
-                    json_answer = json.loads(str_answer)
+        file_name = contract.name
+        file_extension = file_name.split('.')[-1]
+        if file_extension in ['pdf']:
+            if st.button('Process'):
+                with st.spinner('Processing...'): 
+                    try: 
+                        raw_text = get_pdf_text(contract)
+                        text_chunks = get_text_chunks(raw_text)
+                        vector_store = get_vector_store(text_chunks)
+                        conv = conversation_chain(vector_store)
+                        st.session_state.conversation = conv
+                        answer = conv({"question": 'Extract the date of expiration of the contract in this format Day/Month/Year. You answer should be the date only in JSON format like this {"expiration_date":"extracted_date}"'})
+                        str_answer = str(answer['answer'])
+                        json_answer = json.loads(str_answer)
 
-                    str_date = json_answer['expiration_date']
-                    dt_date = datetime.strptime(str_date, "%d/%m/%Y")
-                    current_date = datetime.today()
-                    diff_days=abs((dt_date - current_date).days)
+                        str_date = json_answer['expiration_date']
+                        dt_date = datetime.strptime(str_date, "%d/%m/%Y")
+                        current_date = datetime.today()
+                        diff_days=abs((dt_date - current_date).days)
 
-                    if dt_date<current_date:
-                        st.write(f'The contract has expired by {diff_days} days')
-                    else:
-                        st.write(f'The contract is Valid. It will expire in {diff_days} days')
+                        if dt_date<current_date:
+                            st.write(f'The contract has expired by {diff_days} days')
+                        else:
+                            st.write(f'The contract is Valid. It will expire in {diff_days} days')
 
-                except Exception as e:
-                    st.error(e)
-                    st.error("Error while processing the file...")
+                    except Exception as e:
+                        st.error(e)
+                        st.error("Error while processing the file...")
+        else:
+            st.error('Uploaded files should be in PDF...')
         
 if __name__=="__main__":
     main()
