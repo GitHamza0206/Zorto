@@ -1,6 +1,5 @@
 import os
 import streamlit as st
-from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
@@ -10,6 +9,10 @@ from langchain.chat_models import ChatOpenAI
 from datetime import datetime
 import json 
 import sys 
+from pypdf import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+
 
 os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
 
@@ -41,6 +44,44 @@ def get_vector_store(text_chunks):
     return vectorstore
 
 
+
+
+def create_text_overlay(text, filename="text_overlay.pdf"):
+    c = canvas.Canvas(filename, pagesize=letter)
+    c.drawString(100,100, text)  # Adjust the position (100, 750) as needed
+    c.save()
+
+
+def merge_pdfs(original_pdf, overlay_pdf, output_pdf="merged.pdf"):
+    # Create a PDF reader object for the original and overlay PDFs
+    original_reader = PdfReader(original_pdf)
+    overlay_reader = PdfReader(overlay_pdf)
+    writer = PdfWriter()
+
+    # Iterate through the original PDF pages
+    for page_number in range(len(original_reader.pages)):
+        original_page = original_reader.pages[page_number]
+        # Get the corresponding page from the overlay PDF
+        # Assuming overlay PDF has at least as many pages as the original
+        overlay_page = overlay_reader.pages[0] if page_number == 0 else overlay_reader.pages[page_number % len(overlay_reader.pages)]
+
+        # Merge the overlay page onto the original page
+        original_page.merge_page(overlay_page)
+
+        # Add the merged page to the writer object
+        writer.add_page(original_page)
+    # Write the merged content to a new PDF file
+    with open(output_pdf, "wb") as output_file:
+        writer.write(output_file)
+    
+    with open(output_pdf, "rb") as pdf_file:
+        PDFbyte = pdf_file.read()
+        st.download_button( label="Download PDF",
+                            data=PDFbyte,
+                            file_name="downloaded_document.pdf",
+                            mime="application/octet-stream")
+    
+        
 def conversation_chain(vectorstore):
     
     llm=ChatOpenAI()
@@ -61,6 +102,7 @@ def main():
         file_name = contract.name
         file_extension = file_name.split('.')[-1]
         if file_extension in ['pdf']:
+            
             if st.button('Process'):
                 with st.spinner('Processing...'): 
                     try: 
@@ -78,8 +120,13 @@ def main():
                         current_date = datetime.today()
                         diff_days=abs((dt_date - current_date).days)
 
+
                         if dt_date<current_date:
+                            new_date = str_date[:-1] + str( int(str_date[-1]) +1 )
                             st.write(f'The contract has expired by {diff_days} days')
+                            create_text_overlay("expiration date : " + new_date)
+                            merge_pdfs(contract, "text_overlay.pdf", "final_output.pdf")
+                            
                         else:
                             st.write(f'The contract is Valid. It will expire in {diff_days} days')
 

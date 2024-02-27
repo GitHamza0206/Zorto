@@ -12,3 +12,4 @@ pypdf
 tiktoken
 faiss-cpu
 pysqlite3-binary
+reportlab
