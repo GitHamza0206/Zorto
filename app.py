@@ -101,6 +101,7 @@ def conversation_chain(vectorstore):
     )
     return conversation_chain
 
+import tempfile
 
 def uploadFile(fileName):
     """Uploads file to the cloud"""
@@ -195,6 +196,12 @@ def main():
     if contract:
         file_name = contract.name
         file_extension = file_name.split('.')[-1]
+        
+        temp_dir = tempfile.mkdtemp() 
+        sourceFile = os.path.join(temp_dir, contract.name) 
+        with open(sourceFile, "wb") as f: 
+            f.write(contract.getvalue())
+
         if file_extension in ['pdf']:
             
             if st.button('Process'):
@@ -221,10 +228,10 @@ def main():
                             new_date = str_date[:-1] + str( int(str_date[-1]) +1 )
                             st.write(f'The contract has expired by {diff_days} days')
                             out_name = file_name.split('.')[0] + '_out.pdf'
-                            bytes_data = contract.getvalue()
+                            #bytes_data = contract.getvalue()
                             st.write(str_date)
                             st.write(new_date)
-                            modifyPDF(file_name, out_name, searchString = str_date, replaceString=new_date)
+                            modifyPDF(sourceFile, out_name, searchString = str_date, replaceString=new_date)
                             
                             
                         else:
