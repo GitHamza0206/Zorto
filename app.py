@@ -12,9 +12,17 @@ import sys
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+import requests 
+import os 
 
 
 os.environ["OPENAI_API_KEY"] = st.secrets['OPENAI_API_KEY']
+BASE_URL = "https://api.pdf.co/v1"
+#SourceFile = "POA.pdf"
+#DestinationFile = "result.pdf"
+Password = ""
+PDF_API_KEY = st.secrets["PDF_API_KEY"]
+
 
 __import__('pysqlite3')
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -93,6 +101,92 @@ def conversation_chain(vectorstore):
     )
     return conversation_chain
 
+
+def uploadFile(fileName):
+    """Uploads file to the cloud"""
+    
+    # 1. RETRIEVE PRESIGNED URL TO UPLOAD FILE.
+
+    # Prepare URL for 'Get Presigned URL' API request
+    url = "{}/file/upload/get-presigned-url?contenttype=application/octet-stream&name={}".format(
+        BASE_URL, os.path.basename(fileName))
+    
+    # Execute request and get response as JSON
+    response = requests.get(url, headers={ "x-api-key": PDF_API_KEY })
+    if (response.status_code == 200):
+        json = response.json()
+        
+        if json["error"] == False:
+            # URL to use for file upload
+            uploadUrl = json["presignedUrl"]
+            # URL for future reference
+            uploadedFileUrl = json["url"]
+
+            # 2. UPLOAD FILE TO CLOUD.
+            with open(fileName, 'rb') as file:
+                requests.put(uploadUrl, data=file, headers={ "x-api-key": PDF_API_KEY, "content-type": "application/octet-stream" })
+
+            return uploadedFileUrl
+        else:
+            # Show service reported error
+            print(json["message"])    
+    else:
+        print(f"Request error: {response.status_code} {response.reason}")
+
+    return None
+
+def replaceStringFromPdf(uploadedFileUrl, destinationFile, searchString, replaceString ):
+    """Replace Text FROM UPLOADED PDF FILE using PDF.co Web API"""
+
+    # Prepare requests params as JSON
+    # See documentation: https://apidocs.pdf.co
+    parameters = {}
+    parameters["name"] = os.path.basename(destinationFile)
+    parameters["password"] = Password
+    parameters["url"] = uploadedFileUrl
+    parameters["searchString"] = searchString
+    parameters["replaceString"] = replaceString
+
+    # Prepare URL for 'Replace Text from PDF' API request
+    url = "{}/pdf/edit/replace-text".format(BASE_URL)
+
+    # Execute request and get response as JSON
+    response = requests.post(url, data=parameters, headers={ "x-api-key": PDF_API_KEY })
+    if (response.status_code == 200):
+        json = response.json()
+
+        if json["error"] == False:
+            #  Get URL of result file
+            resultFileUrl = json["url"]            
+            # Download result file
+            r = requests.get(resultFileUrl, stream=True)
+            if (r.status_code == 200):
+                with open(destinationFile, 'wb') as file:
+                    for chunk in r:
+                        file.write(chunk)
+
+                with open(destinationFile, "rb") as pdf_file:
+                    PDFbyte = pdf_file.read()
+                    st.download_button( label="Download PDF",
+                                        data=PDFbyte,
+                                        file_name=destinationFile,
+                                        mime="application/octet-stream")
+                print(f"Result file saved as \"{destinationFile}\" file.")
+            else:
+                print(f"Request error: {response.status_code} {response.reason}")
+        else:
+            # Show service reported error
+            print(json["message"])
+    else:
+        print(f"Request error: {response.status_code} {response.reason}")
+
+
+def modifyPDF(SourceFile, DestinationFile, searchString,replaceString):
+    uploadedFileUrl = uploadFile(SourceFile)
+    if (uploadedFileUrl != None):
+        replaceStringFromPdf(uploadedFileUrl, DestinationFile, searchString, replaceString)
+
+
 def main():
     st.header("Contract Validator")
     st.markdown("This agent is able to read the contract and determine whether the validation date is expired or not")
@@ -111,12 +205,14 @@ def main():
                         vector_store = get_vector_store(text_chunks)
                         conv = conversation_chain(vector_store)
                         st.session_state.conversation = conv
-                        answer = conv({"question": 'Extract the date of expiration of the contract in this format Day/Month/Year. You answer should be the date only in JSON format like this {"expiration_date":"extracted_date}"'})
+                        answer = conv({"question": 'Extract the date of expiration of the contract in the exact format of the document PDF. I want you also to transform this extracted date in this format: day/month/year ,  You answer should be the date only in JSON format like this {"expiration_date":"extracted_date, "formated_date":"formated_date" }"'})
                         str_answer = str(answer['answer'])
                         json_answer = json.loads(str_answer)
 
                         str_date = json_answer['expiration_date']
-                        dt_date = datetime.strptime(str_date, "%d/%m/%Y")
+
+                        formated_date = json_answer['formated_date']
+                        dt_date = datetime.strptime(formated_date, "%d/%m/%Y")
                         current_date = datetime.today()
                         diff_days=abs((dt_date - current_date).days)
 
@@ -124,8 +220,12 @@ def main():
                         if dt_date<current_date:
                             new_date = str_date[:-1] + str( int(str_date[-1]) +1 )
                             st.write(f'The contract has expired by {diff_days} days')
-                            create_text_overlay("expiration date : " + new_date)
-                            merge_pdfs(contract, "text_overlay.pdf", "final_output.pdf")
+                            out_name = file_name.split('.')[0] + '_out.pdf'
+                            bytes_data = contract.getvalue()
+                            st.write(str_date)
+                            st.write(new_date)
+                            modifyPDF(file_name, out_name, searchString = str_date, replaceString=new_date)
+                            
                             
                         else:
                             st.write(f'The contract is Valid. It will expire in {diff_days} days')
